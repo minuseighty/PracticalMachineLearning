@@ -1,0 +1,97 @@
+---
+title: "Practical Machine Learning"
+author: "Zainil Jessani"
+date: "April 3, 2016"
+output: html_document
+---
+
+# Summary      
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+# Data
+
+The training data for this project are available here:   
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:   
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source:    http://groupware.les.inf.puc-rio.br/har.
+
+### Step 1: LOAD R PACKAGES
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+library(caret); library(ggplot2); library(rattle); library(rpart); library(randomForest)
+```
+
+### Step 2: IMPORT THE DATA     
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+trainFilename <- "pml-training.csv"; testFilename <- "pml-testing.csv"
+trainingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(trainingURL, trainFilename, method="curl")
+download.file(testingURL, testFilename, method="curl")
+
+trainHAR <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testHAR <- read.csv("pml-testing.csv", na.strings = c("NA", ""))
+```
+
+### Step 3: DATA PARTITIONING      
+I partitioned the data into a training and validation set to run my models on. The split I chose was 70% to the training set and 30% to the validation set, this seemed appropriate given the vast amount of data. The final dimensions of the data shown below are 160 columns and 13737 (training) vs. 5885 (validation) rows.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+set.seed(3333)
+inTrain <- createDataPartition(y=trainHAR$classe, p=0.7, list = FALSE)
+training <- trainHAR[inTrain, ]; validation <- trainHAR[-inTrain, ]
+dim(training); dim(validation)
+```
+
+### Step 4: CLEANING DATA     
+Likewise when cleaning the data I removed all the empty columns to improve my results.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+training <- training[ , colSums(is.na(training)) == 0] ##empty columns removed
+training <- training[ , -c(1:7)] ##remove non-essential columns
+
+validation <- validation[ , colSums(is.na(validation)) == 0] ##empty columns removed
+validation <- validation[ , -c(1:7)] ##remove non-essential columns
+dim(training); dim(validation)
+```
+
+### Step 5: PREDICTION MODEL 1 -- CLASSIFICATION TREE     
+I chose to use a classification tree becasue it seemed intuitive to split the data into classes this way. The results shown in the subsequent matrix prove that this was a wrong decision as the accuracy was horrible (<50%).
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+modCT <- train(classe ~., method = "rpart", data = training) ##classification tree
+fancyRpartPlot(modCT$finalModel) ##plot tree
+```
+
+#### Results of Classification Tree based on the validation set.
+As you can see in the output below the accuracy is 48.24% an unacceptably low result.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+predCT <- predict(modCT, newdata = validation) ##predict new values
+confusionMatrix(predCT, validation$classe) ##check prediction accuracy
+```
+
+### Step 6: PREDICTION MODEL 2 -- RANDOM FOREST    
+So my next attempt is with Random Forests as this despite being dodgy in its interpretability is a very accurate model. The biggest drawback here is the computation time.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+modRF <- train(classe ~., data = training, method = "rf", trControl = trainControl(method="cv",number=5), prox=TRUE, allowParallel=TRUE )
+print(modRF)
+```
+#### Results of Random Forest based on validation set.    
+Much better!
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+predRF <- predict(modRF, newdata = validation)
+confusionMatrix(predRF, validation$classe)
+```
+
+### Step 7: TESTING SET
+Finally, I simply apply the Random Forest model to the testing set provided originally.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+predTest <- predict(modRF, newdata = testHAR)
+print(predTest)
+```
+
